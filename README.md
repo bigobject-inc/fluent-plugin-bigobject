@@ -22,6 +22,7 @@ Or install it yourself as:
 
 Configure BigObject URL and the table/column to be mapped in BigObject
 
+
 <match bo.insert.*>
   type bigobject
 
