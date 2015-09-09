@@ -22,7 +22,7 @@ Or install it yourself as:
 
 Configure BigObject URL and the table/column to be mapped in BigObject
 
-
+```apache
 <match bo.insert.*>
   type bigobject
 
@@ -50,6 +50,7 @@ Configure BigObject URL and the table/column to be mapped in BigObject
   </table>
 
 </match>
+```
 
 
 ## Contributing
