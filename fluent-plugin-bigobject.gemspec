@@ -4,8 +4,8 @@ Gem::Specification.new do |gem|
   gem.version       = "0.0.1"
   gem.authors       = ["Andrea Sung"]
   gem.email         = ["andrea@bigobject.io"]
-  gem.description   = %q{fluent output plugin to insert BIGOBJECT }
-  gem.summary       = %q{fluent output plugin to insert BIGOBJECT}
+  gem.description   = %q{Fluentd output plugin to insert BIGOBJECT }
+  gem.summary       = %q{Fluentd output plugin to insert BIGOBJECT}
   gem.homepage      = "https://github.com/andreasung/fluent-plugin-bigobject"
   gem.license       = "MIT"
 
