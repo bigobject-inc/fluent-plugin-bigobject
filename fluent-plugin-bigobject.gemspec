@@ -6,7 +6,7 @@ Gem::Specification.new do |gem|
   gem.email         = ["andrea@bigobject.io"]
   gem.description   = %q{Fluentd output plugin to insert BIGOBJECT }
   gem.summary       = %q{Fluentd output plugin to insert BIGOBJECT}
-  gem.homepage      = "https://github.com/andreasung/fluent-plugin-bigobject"
+  gem.homepage      = "https://github.com/macrodatalab/fluent-plugin-bigobject"
   gem.license       = "MIT"
 
   gem.files         = `git ls-files`.split($\)
