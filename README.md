@@ -53,11 +53,6 @@ Configure BigObject URL and the table/column to be mapped in BigObject
 ```
 
 
-## Contributing
-
-Bug reports and pull requests are welcome on GitHub at https://github.com/andreasung/fluent-plugin-bigobject.
-
-
 ## License
 
 The gem is available as open source under the terms of the [MIT License](http://opensource.org/licenses/MIT).
