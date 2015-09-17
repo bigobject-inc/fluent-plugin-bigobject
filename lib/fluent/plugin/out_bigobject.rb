@@ -1,4 +1,5 @@
 class Fluent::BigObjectOutput < Fluent::BufferedOutput
+
   Fluent::Plugin.register_output('bigobject', self)
   
   include Fluent::SetTimeKeyMixin
