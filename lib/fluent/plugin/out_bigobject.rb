@@ -6,6 +6,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   include Fluent::SetTagKeyMixin
 
   config_param :bigobject_hostname, :string
+  config_param :bigobject_port, :integer
   config_param :remove_tag_prefix, :string, :default => nil
   config_param :send_unknown_chunks, :string,  :default=>true
 
@@ -27,9 +28,12 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
 
     attr_reader :mpattern
 
-    def initialize(log)
+    def initialize(log, bo_hostname, bo_port)
       super()
       @log = log
+      @bo_hostname = bo_hostname
+      @bo_port = bo_port
+      @bo_url="http://#{@bo_hostname}:#{@bo_port}/cmd"
     end
 
     def configure(conf)
@@ -64,7 +68,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
     end
 
     #Send Data to Bigobject using Restful API
-    def send_rest(bourl, chunk)
+    def send_rest(chunk)
       stmts = Array.new
       i=0
       columns = nil
@@ -84,7 +88,8 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
       }
       
       sendStmt = "INSERT INTO #{@table}  #{columns} VALUES" + stmts.join(",")
-      resp = sendBO(bourl, sendStmt)
+      
+      resp = sendBO(@bo_url, sendStmt)
       parsed = JSON.parse(resp)
       err = parsed['Err']
       if (err.to_s!='')
@@ -95,7 +100,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
     end
     
     #Send data to Bigobject using binary AVRO
-    def send_binary(bourl, chunk)
+    def send_binary(chunk)
       
       buffer = StringIO.new()      
       dw = Avro::DataFile::Writer.new(buffer, @avro_writer, @avro_schema)
@@ -108,7 +113,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
       dw.flush
 
       begin
-        socket = TCPSocket.open(bourl, 9091)
+        socket = TCPSocket.open(@bo_hostname, @bo_port)
         begin
           #timeout=60
           opt = [1, 60].pack('I!I!')  # { int l_onoff; int l_linger; }
@@ -128,16 +133,12 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
       @log.debug("bigobject send #{i} rows")
     end
     
-    def send(bourl, chunk)
-      Benchmark.bm do |bm|
-        bm.report {
-          if (isBinary) 
-            send_binary(bourl, chunk)
-          else 
-            send_rest(bourl, chunk)
-          end
-        }
-      end
+    def send(chunk)
+        if (isBinary) 
+          send_binary(chunk)
+        else 
+          send_rest(chunk)
+        end
     end
     
     def to_s
@@ -188,7 +189,6 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
     require 'rest-client'
     require 'json'
     require 'avro'
-    require 'benchmark'
     log.info("bigobject initialize")
   end  
   
@@ -202,12 +202,10 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
     @tables = []
     @default_table = nil
  
-    @bigobject_url="http://#{@bigobject_hostname}:9090/cmd"
-
     conf.elements.select { |e|
       e.name == 'table'
     }.each { |e|
-      te = TableElement.new(log)
+      te = TableElement.new(log, @bigobject_hostname, @bigobject_port)
       te.configure(e)
       @tables << te
     }
@@ -236,7 +234,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
     unknownChunks = []
     @tables.each { |table|
       if table.mpattern.match(chunk.key)
-        return table.send((table.isBinary) ? @bigobject_hostname : @bigobject_url, chunk)
+        return table.send(chunk)
       end
     }
     

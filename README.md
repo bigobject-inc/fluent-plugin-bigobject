@@ -28,17 +28,25 @@ Configure BigObject URL and the table/column to be mapped in BigObject
 
   log_level info
 
-  # specify the bigobject_url to connect to
-  bigobject_url http://192.168.59.103:9090/cmd
+  # specify the bigobject to connect to
+  bigobject_hostname 192.168.59.103
+  bigobject_port 9091
 
   remove_tag_prefix bo.insert. 
   flush_interval 5s
 
   <table>
       table Customer
-      column_mapping id,name,language,state,company,gender,age
       pattern customer
+
+      # optional - use for binary avro.
+      #if omit schema_file, will use Restful API to connect to BigObject
+      schema_file /fluentd/input/avsc/Customer.avsc
+      
+      #optional - not use in binary avro
       #bo_workspace
+
+      #optional - not use in binary avro
       #bo_opts
   </table>
 
