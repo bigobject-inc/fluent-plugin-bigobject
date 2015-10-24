@@ -5,7 +5,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   include Fluent::SetTimeKeyMixin
   include Fluent::SetTagKeyMixin
 
-  config_param :bigobject_url, :string
+  config_param :bigobject_hostname, :string
   config_param :remove_tag_prefix, :string, :default => nil
   config_param :send_unknown_chunks, :string,  :default=>true
 
@@ -19,10 +19,11 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
     include Fluent::Configurable
 
     config_param :table, :string
-    config_param :column_mapping, :string
+    config_param :column_mapping, :string, :default=>nil
     config_param :pattern, :string, :default=>nil
     config_param :bo_workspace, :string, :default=>nil
     config_param :bo_opts, :string, :default=>nil
+    config_param :schema_file, :string, :default => nil
 
     attr_reader :mpattern
 
@@ -33,19 +34,37 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
 
     def configure(conf)
       super
+
+      if (isBinary) 
+        @avro_schema = Avro::Schema.parse(File.open(@schema_file, "rb").read)
+        @avro_writer = Avro::IO::DatumWriter.new(@avro_schema)
+      else 
+        @avro_schema = nil
+        @avro_writer = nil
+      end
+
       @mpattern = Fluent::MatchPattern.create(pattern)
-      @mapping = parse_column_mapping(@column_mapping)
+      @mapping = (@column_mapping==nil)? nil:parse_column_mapping(@column_mapping)
       @log.info("column mapping for #{table} - #{@mapping}")
       @format_proc = Proc.new { |record|
-        new_record = {}
-        @mapping.each { |k, c|
-          new_record[c] = record[k]
-        }
-        new_record
+        if (@mapping==nil)
+          record
+        else
+          new_record = {}
+          @mapping.each { |k, c|
+            new_record[c] = record[k]
+            }
+          new_record
+        end
       }
     end
+    
+    def isBinary()
+      return !(@schema_file.to_s.empty?)
+    end
 
-    def send(bourl, chunk)
+    #Send Data to Bigobject using Restful API
+    def send_rest(bourl, chunk)
       stmts = Array.new
       i=0
       columns = nil
@@ -60,23 +79,65 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
          if columns.to_s.empty?
            columns = "(#{keys.join(",")})"
          end
-         #single quote each column data
          stmts.push("('#{values.join("','")}')")
          i+=1
       }
       
       sendStmt = "INSERT INTO #{@table}  #{columns} VALUES" + stmts.join(",")
-#      @log.debug("sendStmt=", sendStmt)
-      @log.info("bigobject start insert #{i} rows")
       resp = sendBO(bourl, sendStmt)
       parsed = JSON.parse(resp)
       err = parsed['Err']
-#      puts "Content=#{parsed['Content']}, Err=#{err}"
       if (err.to_s!='')
         @log.error("[BigObject] #{err}")
       end
-      @log.info("bigobject end insert #{i} rows")
+      @log.debug("bigobject insert #{i} rows")
       
+    end
+    
+    #Send data to Bigobject using binary AVRO
+    def send_binary(bourl, chunk)
+      
+      buffer = StringIO.new()      
+      dw = Avro::DataFile::Writer.new(buffer, @avro_writer, @avro_schema)
+      i=0
+      chunk.msgpack_each { |tag, time, data|
+         data = @format_proc.call(data)
+         dw<<data
+         i+=1
+      }
+      dw.flush
+
+      begin
+        socket = TCPSocket.open(bourl, 9091)
+        begin
+          #timeout=60
+          opt = [1, 60].pack('I!I!')  # { int l_onoff; int l_linger; }
+          socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_LINGER, opt)
+  
+          opt = [60, 0].pack('L!L!')  # struct timeval
+          socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, opt)
+          socket.write(buffer.string)
+        ensure
+          socket.close
+        end
+        
+      rescue Exception => e 
+          @log.error(e.message)  
+          raise "Failed to send_binary: #{e.message}"
+      end
+      @log.debug("bigobject send #{i} rows")
+    end
+    
+    def send(bourl, chunk)
+      Benchmark.bm do |bm|
+        bm.report {
+          if (isBinary) 
+            send_binary(bourl, chunk)
+          else 
+            send_rest(bourl, chunk)
+          end
+        }
+      end
     end
     
     def to_s
@@ -109,8 +170,6 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
     
     def sendBO(bourl, sendStmt)
       params = formatRequest(sendStmt)
-      @log.debug("\nbourl=#{bourl} params=#{params.to_json}")
-    
       begin
         resp = RestClient.post bourl, params.to_json, :content_type =>:json, :accept =>:json
         @log.debug("resp= #{resp.body}")  
@@ -118,6 +177,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
         @log.error(e.message)  
         raise "Failed to sendBO: #{e.message}"
       end
+      
       return resp
     end
    
@@ -127,6 +187,8 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
     super
     require 'rest-client'
     require 'json'
+    require 'avro'
+    require 'benchmark'
     log.info("bigobject initialize")
   end  
   
@@ -139,12 +201,14 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
 
     @tables = []
     @default_table = nil
+ 
+    @bigobject_url="http://#{@bigobject_hostname}:9090/cmd"
+
     conf.elements.select { |e|
       e.name == 'table'
     }.each { |e|
       te = TableElement.new(log)
       te.configure(e)
-#      puts "conf.elements #{e}"
       @tables << te
     }
     
@@ -158,13 +222,10 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   
   def shutdown
     super
-    log.info("bigobject shutdown")
   end 
-  
-  
+
   # This method is called when an event reaches to Fluentd.
   def format(tag, time, record)
-#    puts "tag=#{tag}, time=#{time}, record=#{record}"
     [tag, time, record].to_msgpack
   end
   
@@ -174,11 +235,8 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   def write(chunk)
     unknownChunks = []
     @tables.each { |table|
-#      puts "write table #{table}"
-#      puts "chunk.key= #{chunk.key}"
       if table.mpattern.match(chunk.key)
-        log.info("add known chunk #{chunk.key}")
-        return table.send(@bigobject_url, chunk)
+        return table.send((table.isBinary) ? @bigobject_hostname : @bigobject_url, chunk)
       end
     }
     
