@@ -17,6 +17,6 @@ Gem::Specification.new do |gem|
   gem.add_runtime_dependency "fluentd"
   gem.add_runtime_dependency "rest-client"
   gem.add_runtime_dependency "json"
-  gem.add_development_dependency "rake"
   gem.add_development_dependency "avro"
+  gem.add_development_dependency "rake"
 end
