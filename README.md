@@ -36,27 +36,32 @@ Configure BigObject URL and the table/column to be mapped in BigObject
   flush_interval 5s
 
   <table>
-      table Customer
+      #example of sending data to BigObject using binary avro
       pattern customer
-
-      # optional - use for binary avro.
-      #if omit schema_file, will use Restful API to connect to BigObject
       schema_file /fluentd/input/avsc/Customer.avsc
-      
-      #optional - not use in binary avro
-      #bo_workspace
-
-      #optional - not use in binary avro
-      #bo_opts
   </table>
+
+</match>
+
+<match bo.insert_rest.*>
+  type bigobject
+
+  log_level info 
+
+  # specify the bigobject_url to connect to
+  bigobject_hostname 192.168.59.103
+  bigobject_port 9090
+
+  remove_tag_prefix bo.insert_rest. 
+  flush_interval 5s
 
   <table>
-    table search_test3
-    # map to different column name in BigObject
-    column_mapping 'ID:id3, TEXT:text3'
-    pattern test3
+      table Customer
+      #column_mapping id1:id,name,language,state,company,gender,age
+      pattern customer
+      #bo_workspace
+      #bo_opts
   </table>
-
 </match>
 ```
 
