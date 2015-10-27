@@ -37,8 +37,12 @@ Configure BigObject URL and the table/column to be mapped in BigObject
 
   <table>
       #example of sending data to BigObject using binary avro
+      #table name is specified in avsc file
       pattern customer
       schema_file /fluentd/input/avsc/Customer.avsc
+
+      #optional - 
+      #column_mapping id1:id,name,language,state,company,gender,age
   </table>
 
 </match>
@@ -56,11 +60,15 @@ Configure BigObject URL and the table/column to be mapped in BigObject
   flush_interval 5s
 
   <table>
-      table Customer
+      #example of sending data to BigObject using restful API 
+      table Customer2
+      pattern customer2
+
+      #optional -- 
       #column_mapping id1:id,name,language,state,company,gender,age
-      pattern customer
       #bo_workspace
       #bo_opts
+
   </table>
 </match>
 ```
