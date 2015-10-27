@@ -23,54 +23,50 @@ Or install it yourself as:
 Configure BigObject URL and the table/column to be mapped in BigObject
 
 ```apache
-<match bo.insert.*>
+
+# send data to BigObject using avro by providing schema_file in each table
+<match bo.insert_avro.*>
   type bigobject
 
   log_level info
 
-  # specify the bigobject to connect to
+  # specify the bigobject_url to connect to
   bigobject_hostname 192.168.59.103
   bigobject_port 9091
 
-  remove_tag_prefix bo.insert. 
-  flush_interval 5s
+  remove_tag_prefix bo.insert_avro.
+  flush_interval 60s
 
   <table>
-      #example of sending data to BigObject using binary avro
-      #table name is specified in avsc file
       pattern customer
-      schema_file /fluentd/input/avsc/Customer.avsc
-
-      #optional - 
-      #column_mapping id1:id,name,language,state,company,gender,age
+      schema_file /fluentd/input/avsc/Customer_binary.avsc
   </table>
-
 </match>
 
+# send data to BigObject using Restful API. Tables need to be created in advance in BigObject.
 <match bo.insert_rest.*>
   type bigobject
 
-  log_level info 
+  log_level info
 
   # specify the bigobject_url to connect to
   bigobject_hostname 192.168.59.103
   bigobject_port 9090
 
-  remove_tag_prefix bo.insert_rest. 
-  flush_interval 5s
+  remove_tag_prefix bo.insert_rest.
+  flush_interval 60s
 
   <table>
-      #example of sending data to BigObject using restful API 
-      table Customer2
-      pattern customer2
+      table Customer
+      pattern customer
 
-      #optional -- 
-      #column_mapping id1:id,name,language,state,company,gender,age
+      #optional-
+      #column_mapping id,name,language,state,company,gender,age
       #bo_workspace
       #bo_opts
-
   </table>
 </match>
+
 ```
 
 
