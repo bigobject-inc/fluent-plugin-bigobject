@@ -19,7 +19,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   class TableElement
     include Fluent::Configurable
 
-    config_param :table, :string
+    config_param :table, :string, :default=>nil
     config_param :column_mapping, :string, :default=>nil
     config_param :pattern, :string, :default=>nil
     config_param :bo_workspace, :string, :default=>nil
@@ -38,7 +38,9 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
 
     def configure(conf)
       super
-
+      if (@table==nil)&&(@schema_file==nil)
+        raise "Table name and schema_file cannot be both nil. Please specify <schema_file> if using avro input or <table> is using restful api." 
+      end 
       if (isBinary) 
         @avro_schema = Avro::Schema.parse(File.open(@schema_file, "rb").read)
         @avro_writer = Avro::IO::DatumWriter.new(@avro_schema)
