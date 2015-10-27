@@ -30,7 +30,7 @@ Configure BigObject URL and the table/column to be mapped in BigObject
 
   log_level info
 
-  # specify the bigobject_url to connect to
+  # specify the bigobject host/port to connect to
   bigobject_hostname 192.168.59.103
   bigobject_port 9091
 
@@ -49,7 +49,7 @@ Configure BigObject URL and the table/column to be mapped in BigObject
 
   log_level info
 
-  # specify the bigobject_url to connect to
+  # specify the bigobject host/port to connect to
   bigobject_hostname 192.168.59.103
   bigobject_port 9090
 
