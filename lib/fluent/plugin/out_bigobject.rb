@@ -85,12 +85,11 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
          if columns.to_s.empty?
            columns = "(#{keys.join(",")})"
          end
-         stmts.push("('#{values.join("','")}')")
+         stmts.push("(\"#{values.join("\",\"")}\")")
          i+=1
       }
       
       sendStmt = "INSERT INTO #{@table}  #{columns} VALUES" + stmts.join(",")
-      
       resp = sendBO(@bo_url, sendStmt)
       parsed = JSON.parse(resp)
       err = parsed['Err']
