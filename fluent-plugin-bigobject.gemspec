@@ -1,7 +1,7 @@
 # -*- encoding: utf-8 -*-
 Gem::Specification.new do |gem|
   gem.name          = "fluent-plugin-bigobject"
-  gem.version       = "0.0.8"
+  gem.version       = "0.0.9"
   gem.authors       = ["Andrea Sung"]
   gem.email         = ["andrea@bigobject.io"]
   gem.description   = %q{Fluentd output plugin to insert BIGOBJECT }
