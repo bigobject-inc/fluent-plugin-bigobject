@@ -80,12 +80,13 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
          data = @format_proc.call(data)
          data.keys.sort.each do |key|
            keys << key
-           values << data[key]
+           values << data[key].to_json
          end
          if columns.to_s.empty?
            columns = "(#{keys.join(",")})"
          end
-         stmts.push("(\"#{values.join("\",\"")}\")")
+         stmts.push("(#{values.join(",")})")
+         #stmts.push("(\"#{values.join("\",\"")}\")")
          i+=1
       }
       
