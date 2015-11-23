@@ -8,10 +8,10 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   config_param :bigobject_hostname, :string
   config_param :bigobject_port, :integer
   config_param :remove_tag_prefix, :string, :default => nil
-#  config_param :send_unknown_chunks, :string,  :default=>true
   config_param :tag_format, :string, :default => nil
   
-  DEFAULT_TAG_FORMAT = /(?<table_name>[^\.]+)\.(?<event>[^\.]+)\.(?<primary_key>[^\.]+)$/
+#  DEFAULT_TAG_FORMAT = /(?<table_name>[^\.]+)\.(?<event>[^\.]+)\.(?<primary_key>[^\.]+)$/
+  DEFAULT_TAG_FORMAT = /^(?<table_name>[^\.]+)\.(?<event>[^\.]+)(\.(?<primary_key>[^\.]+))*/
 
   attr_accessor :tables
   
@@ -67,8 +67,6 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
       end
     end
     
-    
-
     #Send Data to Bigobject using Restful API
     def send(chunk)
       insertStmts = Array.new
@@ -76,11 +74,10 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
       
       columns = nil
       chunk.msgpack_each { |tag, time, data|
-        
          tag_parts = tag.match(@tag_format)
          target_event = tag_parts['event']
          id_key = tag_parts['primary_key']
-           
+         
          keys = Array.new
          values = Array.new
          data = @format_proc.call(data)
@@ -104,7 +101,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
                  updates.push("#{key}=#{value}")
                end 
            }
-           sendStmt = "update #{table} set #{updates.join(",")} where #{id_key}=#{pkey}"
+           sendStmt = "UPDATE #{table} SET #{updates.join(",")} WHERE #{id_key}=#{pkey}"
            sendBO(@bo_url, sendStmt)   
          elsif (target_event=='delete')
            keys.zip(values) { |key, value|
@@ -117,7 +114,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
       }
       
       if insertStmts.length>0
-        sendStmt = "INSERT INTO #{@table}  #{columns} VALUES" + insertStmts.join(",")
+        sendStmt = "INSERT INTO #{@table}  #{columns} VALUES " + insertStmts.join(",")
         sendBO(@bo_url, sendStmt)
         @log.debug("sending #{insertStmts.length} rows to bigobject for insert via Restful API")
       end 
@@ -253,6 +250,7 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   end
   
   def emit(tag, es, chain)
-    super(tag, es, chain, format_tag(tag))
+    nt = format_tag(tag)
+    super(nt, es, chain, nt)
   end
 end
