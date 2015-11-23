@@ -24,27 +24,46 @@ Configure BigObject URL and the table/column to be mapped in BigObject
 
 ```apache
 
-# send data to BigObject using avro by providing schema_file in each table
-<match bo.insert_avro.*>
-  type bigobject
+#sample source to read csv file
+<source>
+  type tail
 
-  log_level info
+  #path- where you placed your input data
+  path ./input/Customer.csv
 
-  # specify the bigobject host/port to connect to
-  bigobject_hostname 192.168.59.103
-  bigobject_port 9091
+  # pos_file where you record file position
+  pos_file ./log/customer.log.pos
 
-  remove_tag_prefix bo.insert_avro.
-  flush_interval 60s
+  # for bigobject output plugin, use tag bigobject.${table_pattern}.${event}.${primary_key}
+  # ${primary_key} is not needed for insert
+  tag bigobject.cust.insert
 
-  <table>
-      pattern customer
-      schema_file /fluentd/input/avsc/Customer_binary.avsc
-  </table>
-</match>
+  #input file format
+  format csv
 
-# send data to BigObject using Restful API. Tables need to be created in advance in BigObject.
-<match bo.insert_rest.*>
+  # keys - columns in csv file
+  keys id,name,language,state,company,gender,age
+
+  #types - string/bool/integer/float/time/array
+  types age1:integer
+
+</source>
+
+# Send data to BigObject using Restful API. Tables need to be created in advance in BigObject.
+# depending on the event in tag received, will send data to BigObject for insert/update/delete. 
+#
+# Tag for each event - bigobject.${table_pattern}.${event}.${primary_key}.
+# ${table_pattern} : will match to the <pattern> in <table> section of bigobject output plugin
+# ${event} : valid event type by insert/update/delete.
+# ${primary_key} : the primary key for table, optional for insert event.
+# if primary_key is integer type in BigObject, set bo_primary_key_is_int to true 
+#
+# Eg:
+# tag bigobject.cust.insert ==> INSERT INTO <table> VALUES ...
+# tag bigobject.cust.delete.id ==> DELETE FROM <table> WHERE id=...
+# tag bigobject.cust.update.id ==> UPDATE <table> SET ... WHERE id=...
+
+<match bigobject.**>
   type bigobject
 
   log_level info
@@ -53,14 +72,15 @@ Configure BigObject URL and the table/column to be mapped in BigObject
   bigobject_hostname 192.168.59.103
   bigobject_port 9090
 
-  remove_tag_prefix bo.insert_rest.
+  remove_tag_prefix bigobject.
   flush_interval 60s
 
   <table>
       table Customer
-      pattern customer
+      pattern cust
 
       #optional-
+      #bo_primary_key_is_int true #defualts to false
       #column_mapping id,name,language,state,company,gender,age
       #bo_workspace
       #bo_opts

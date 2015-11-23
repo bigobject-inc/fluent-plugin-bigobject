@@ -4,9 +4,9 @@ Gem::Specification.new do |gem|
   gem.version       = "0.0.10"
   gem.authors       = ["Andrea Sung"]
   gem.email         = ["andrea@bigobject.io"]
-  gem.description   = %q{Fluentd output plugin to insert BIGOBJECT }
-  gem.summary       = %q{Fluentd output plugin to insert BIGOBJECT}
-  gem.homepage      = "https://github.com/macrodatalab/fluent-plugin-bigobject"
+  gem.description   = %q{Fluentd output plugin to insert/update/delete data in BIGOBJECT }
+  gem.summary       = %q{Fluentd output plugin to insert/update/delete data in BIGOBJECT}
+  gem.homepage      = "https://github.com/bigobject-inc/fluent-plugin-bigobject"
   gem.license       = "MIT"
 
   gem.files         = `git ls-files`.split($\)
@@ -17,6 +17,5 @@ Gem::Specification.new do |gem|
   gem.add_runtime_dependency "fluentd"
   gem.add_runtime_dependency "rest-client"
   gem.add_runtime_dependency "json"
-  gem.add_runtime_dependency "avro"
   gem.add_development_dependency "rake"
 end
