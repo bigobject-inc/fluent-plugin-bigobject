@@ -8,7 +8,10 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   config_param :bigobject_hostname, :string
   config_param :bigobject_port, :integer
   config_param :remove_tag_prefix, :string, :default => nil
-  config_param :send_unknown_chunks, :string,  :default=>true
+#  config_param :send_unknown_chunks, :string,  :default=>true
+  config_param :tag_format, :string, :default => nil
+  
+  DEFAULT_TAG_FORMAT = /(?<table_name>[^\.]+)\.(?<event>[^\.]+)\.(?<primary_key>[^\.]+)$/
 
   attr_accessor :tables
   
@@ -19,35 +22,26 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   class TableElement
     include Fluent::Configurable
 
-    config_param :table, :string, :default=>nil
+    config_param :table, :string
     config_param :column_mapping, :string, :default=>nil
     config_param :pattern, :string, :default=>nil
     config_param :bo_workspace, :string, :default=>nil
     config_param :bo_opts, :string, :default=>nil
-    config_param :schema_file, :string, :default => nil
+    config_param :bo_primary_key_is_int, :bool, :default=>false
 
     attr_reader :mpattern
 
-    def initialize(log, bo_hostname, bo_port)
+    def initialize(log, bo_hostname, bo_port, tag_format)
       super()
       @log = log
       @bo_hostname = bo_hostname
       @bo_port = bo_port
       @bo_url="http://#{@bo_hostname}:#{@bo_port}/cmd"
+      @tag_format = tag_format
     end
 
     def configure(conf)
       super
-      if (@table==nil)&&(@schema_file==nil)
-        raise "Table name and schema_file cannot be both nil. Please specify <schema_file> if using avro input or <table> is using restful api." 
-      end 
-      if (isBinary) 
-        @avro_schema = Avro::Schema.parse(File.open(@schema_file, "rb").read)
-        @avro_writer = Avro::IO::DatumWriter.new(@avro_schema)
-      else 
-        @avro_schema = nil
-        @avro_writer = nil
-      end
 
       @mpattern = Fluent::MatchPattern.create(pattern)
       @mapping = (@column_mapping==nil)? nil:parse_column_mapping(@column_mapping)
@@ -65,82 +59,74 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
       }
     end
     
-    def isBinary()
-      return !(@schema_file.to_s.empty?)
+    def getPkeyValue(value)
+      if (@bo_primary_key_is_int)
+           return value
+      else
+           return"\"#{value}\""
+      end
     end
+    
+    
 
     #Send Data to Bigobject using Restful API
-    def send_rest(chunk)
-      stmts = Array.new
-      i=0
+    def send(chunk)
+      insertStmts = Array.new
+      deleteStmts = Array.new
+      
       columns = nil
       chunk.msgpack_each { |tag, time, data|
+        
+         tag_parts = tag.match(@tag_format)
+         target_event = tag_parts['event']
+         id_key = tag_parts['primary_key']
+           
          keys = Array.new
          values = Array.new
          data = @format_proc.call(data)
          data.keys.sort.each do |key|
-           keys << key
-           values << data[key].to_json
+            keys << key
+            values << data[key].to_json
          end
-         if columns.to_s.empty?
-           columns = "(#{keys.join(",")})"
+          
+         if (target_event=='insert')
+            if columns.to_s.empty?
+              columns = "(#{keys.join(",")})"
+            end
+            insertStmts.push("(#{values.join(",")})")
+         elsif (target_event=='update')
+           pkey=""
+           updates = Array.new
+           keys.zip(values) { |key, value|
+               if (key==id_key)
+                 pkey = getPkeyValue(value)
+               else
+                 updates.push("#{key}=#{value}")
+               end 
+           }
+           sendStmt = "update #{table} set #{updates.join(",")} where #{id_key}=#{pkey}"
+           sendBO(@bo_url, sendStmt)   
+         elsif (target_event=='delete')
+           keys.zip(values) { |key, value|
+                if (key==id_key)
+                  pkey = getPkeyValue(value)
+                end
+                deleteStmts.push("#{id_key}=#{pkey}")
+            }
          end
-         stmts.push("(#{values.join(",")})")
-         #stmts.push("(\"#{values.join("\",\"")}\")")
-         i+=1
       }
       
-      sendStmt = "INSERT INTO #{@table}  #{columns} VALUES" + stmts.join(",")
-      resp = sendBO(@bo_url, sendStmt)
-      parsed = JSON.parse(resp)
-      err = parsed['Err']
-      if (err.to_s!='')
-        @log.error("[BigObject] #{err}")
-      end
-      @log.debug("bigobject insert #{i} rows")
+      if insertStmts.length>0
+        sendStmt = "INSERT INTO #{@table}  #{columns} VALUES" + insertStmts.join(",")
+        sendBO(@bo_url, sendStmt)
+        @log.debug("sending #{insertStmts.length} rows to bigobject for insert via Restful API")
+      end 
       
-    end
-    
-    #Send data to Bigobject using binary AVRO
-    def send_binary(chunk)
-      
-      buffer = StringIO.new()      
-      dw = Avro::DataFile::Writer.new(buffer, @avro_writer, @avro_schema)
-      i=0
-      chunk.msgpack_each { |tag, time, data|
-         data = @format_proc.call(data)
-         dw<<data
-         i+=1
-      }
-      dw.flush
-
-      begin
-        socket = TCPSocket.open(@bo_hostname, @bo_port)
-        begin
-          #timeout=60
-          opt = [1, 60].pack('I!I!')  # { int l_onoff; int l_linger; }
-          socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_LINGER, opt)
-  
-          opt = [60, 0].pack('L!L!')  # struct timeval
-          socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, opt)
-          socket.write(buffer.string)
-        ensure
-          socket.close
-        end
-        
-      rescue Exception => e 
-          @log.error(e.message)  
-          raise "Failed to send_binary: #{e.message}"
+      if deleteStmts.length>0
+        sendStmt = "DELETE FROM #{@table} WHERE " + deleteStmts.join(" or ")
+        sendBO(@bo_url, sendStmt)
+        @log.debug("sending #{deleteStmts.length} rows to bigobject for delete via Restful API")
       end
-      @log.debug("bigobject send #{i} rows")
-    end
-    
-    def send(chunk)
-        if (isBinary) 
-          send_binary(chunk)
-        else 
-          send_rest(chunk)
-        end
     end
     
     def to_s
@@ -181,7 +167,12 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
         raise "Failed to sendBO: #{e.message}"
       end
       
-      return resp
+      parsed = JSON.parse(resp)
+      err = parsed['Err']
+      if (err.to_s!='')
+        @log.error("[BigObject] #{err}")
+      end
+      
     end
    
   end #end class
@@ -190,7 +181,6 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
     super
     require 'rest-client'
     require 'json'
-    require 'avro'
     log.info("bigobject initialize")
   end  
   
@@ -201,13 +191,19 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
       @remove_tag_prefix = Regexp.new('^' + Regexp.escape(remove_tag_prefix))
     end
 
+    if @tag_format.nil? || @tag_format == DEFAULT_TAG_FORMAT
+      @tag_format = DEFAULT_TAG_FORMAT
+    else
+      @tag_format = Regexp.new(conf['tag_format'])
+    end
+    
     @tables = []
     @default_table = nil
  
     conf.elements.select { |e|
       e.name == 'table'
     }.each { |e|
-      te = TableElement.new(log, @bigobject_hostname, @bigobject_port)
+      te = TableElement.new(log, @bigobject_hostname, @bigobject_port, @tag_format)
       te.configure(e)
       @tables << te
     }
@@ -234,8 +230,12 @@ class Fluent::BigObjectOutput < Fluent::BufferedOutput
   # 'chunk' is a buffer chunk that includes multiple formatted events. 
   def write(chunk)
     unknownChunks = []
+    tag = chunk.key
+    tag_parts = tag.match(@tag_format)
+    target_table = tag_parts['table_name']
+      
     @tables.each { |table|
-      if table.mpattern.match(chunk.key)
+      if table.mpattern.match(target_table)
         return table.send(chunk)
       end
     }
