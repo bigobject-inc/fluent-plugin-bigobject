@@ -1,4 +1,4 @@
-# fluent-plugin-bigobject
+# fluentd-plugin-bigobject
 
 Fluentd output plugin for inserting data to BigObject
 
